@@ -8,7 +8,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
     "start": "node dist/run-example.js",
-    "dev": "npm run build && npm run start"
+    "dev": "npm run build && npm run start",
+    "example": "npm run build && node dist/run-example.js",
+    "example:multiple": "npm run build && node dist/run-multiple-example.js"
   },
   "keywords": [],
   "author": "",

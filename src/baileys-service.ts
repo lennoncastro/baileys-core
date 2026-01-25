@@ -36,15 +36,31 @@ import makeWASocket, {
     private socket: WASocket | null = null;
     private connectionStatus: WhatsAppConnectionStatus = 'disconnected';
     private authDir: string;
-    private messageHandlers: Array<(message: WhatsAppMessage) => void> = [];
+    private instanceId?: string;
+    private messageHandlers: Map<string, (message: WhatsAppMessage) => void> = new Map();
     public messageRepository?: { 
       save: (message: any) => void;
       findLatestByPhoneNumber: (phoneNumber: string) => any | undefined;
       updateRfqId: (messageId: string, rfqId: string) => boolean;
     };
   
-    constructor(authDir?: string) {
+    constructor(authDir?: string, instanceId?: string) {
       this.authDir = authDir ?? join(__dirname, '../../.whatsapp-auth');
+      this.instanceId = instanceId;
+    }
+    
+    /**
+     * Obter o ID da instância
+     */
+    getInstanceId(): string | undefined {
+      return this.instanceId;
+    }
+    
+    /**
+     * Definir o ID da instância
+     */
+    setInstanceId(instanceId: string): void {
+      this.instanceId = instanceId;
     }
   
     setMessageRepository(repository: { 
@@ -82,9 +98,10 @@ import makeWASocket, {
           const { connection, lastDisconnect, qr } = update;
   
           if (qr) {
-            console.log('\n📱 Escaneie o QR Code abaixo com o WhatsApp:\n');
+            const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+            console.log(`\n${instanceLabel}📱 Escaneie o QR Code abaixo com o WhatsApp:\n`);
             qrcode.generate(qr, { small: true });
-            console.log('\n💡 No WhatsApp: Menu > Aparelhos conectados > Conectar um aparelho\n');
+            console.log(`\n${instanceLabel}💡 No WhatsApp: Menu > Aparelhos conectados > Conectar um aparelho\n`);
           }
   
           if (connection === 'close') {
@@ -92,15 +109,18 @@ import makeWASocket, {
             
             if (shouldReconnect) {
               this.connectionStatus = 'disconnected';
-              console.log('🔄 Reconectando ao WhatsApp...');
+              const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+              console.log(`${instanceLabel}🔄 Reconectando ao WhatsApp...`);
               this.connect();
             } else {
               this.connectionStatus = 'disconnected';
-              console.log('❌ Conexão com WhatsApp encerrada. Faça login novamente.');
+              const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+              console.log(`${instanceLabel}❌ Conexão com WhatsApp encerrada. Faça login novamente.`);
             }
           } else if (connection === 'open') {
             this.connectionStatus = 'connected';
-            console.log('✅ Conectado ao WhatsApp com sucesso!');
+            const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+            console.log(`${instanceLabel}✅ Conectado ao WhatsApp com sucesso!`);
           }
         });
   
@@ -131,11 +151,13 @@ import makeWASocket, {
                   whatsappMessage.messageId = messageId;
                 }
   
-                this.messageHandlers.forEach((handler) => {
+                // Executar todos os handlers desta instância
+                this.messageHandlers.forEach((handler, handlerId) => {
                   try {
                     handler(whatsappMessage);
                   } catch (error) {
-                    console.error('Erro ao processar mensagem:', error);
+                    const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+                    console.error(`${instanceLabel}Erro ao processar mensagem no handler "${handlerId}":`, error);
                   }
                 });
               }
@@ -144,7 +166,8 @@ import makeWASocket, {
         });
       } catch (error) {
         this.connectionStatus = 'error';
-        console.error('Erro ao conectar ao WhatsApp:', error);
+        const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+        console.error(`${instanceLabel}Erro ao conectar ao WhatsApp:`, error);
         throw error;
       }
     }
@@ -156,13 +179,15 @@ import makeWASocket, {
   
       const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
       const phoneNumber = to.replace('@s.whatsapp.net', '').replace('@c.us', '');
+      const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
       
-      console.log(`📤 WhatsAppService.sendMessage: Enviando para ${jid} (${to})`);
-      console.log(`   Mensagem (primeiros 100 chars): ${message.substring(0, 100)}...`);
+      console.log(`${instanceLabel}📤 WhatsAppService.sendMessage: Enviando para ${jid} (${to})`);
+      console.log(`${instanceLabel}   Mensagem (primeiros 100 chars): ${message.substring(0, 100)}...`);
       
       try {
         await this.socket.sendMessage(jid, { text: message });
-        console.log(`✅ Mensagem enviada com sucesso para ${jid}`);
+        const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+        console.log(`${instanceLabel}✅ Mensagem enviada com sucesso para ${jid}`);
   
         // Salvar mensagem enviada
         if (this.messageRepository) {
@@ -177,13 +202,52 @@ import makeWASocket, {
           });
         }
       } catch (error) {
-        console.error(`❌ Erro ao enviar mensagem para ${jid}:`, error);
+        const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+        console.error(`${instanceLabel}❌ Erro ao enviar mensagem para ${jid}:`, error);
         throw error;
       }
     }
   
-    onMessage(handler: (message: WhatsAppMessage) => void): void {
-      this.messageHandlers.push(handler);
+    /**
+     * Registrar um handler de mensagem para esta instância
+     * @param handler Função callback que será chamada quando uma mensagem for recebida
+     * @param handlerId ID opcional para identificar o handler (útil para remover depois)
+     * @returns O ID do handler (gerado automaticamente se não fornecido)
+     */
+    onMessage(handler: (message: WhatsAppMessage) => void, handlerId?: string): string {
+      const id = handlerId ?? `handler_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      this.messageHandlers.set(id, handler);
+      return id;
+    }
+    
+    /**
+     * Remover um handler de mensagem específico desta instância
+     * @param handlerId ID do handler a ser removido
+     * @returns true se o handler foi removido, false se não foi encontrado
+     */
+    offMessage(handlerId: string): boolean {
+      return this.messageHandlers.delete(handlerId);
+    }
+    
+    /**
+     * Remover todos os handlers de mensagem desta instância
+     */
+    clearMessageHandlers(): void {
+      this.messageHandlers.clear();
+    }
+    
+    /**
+     * Obter o número de handlers registrados nesta instância
+     */
+    getMessageHandlerCount(): number {
+      return this.messageHandlers.size;
+    }
+    
+    /**
+     * Listar todos os IDs dos handlers registrados nesta instância
+     */
+    getMessageHandlerIds(): string[] {
+      return Array.from(this.messageHandlers.keys());
     }
   
     getConnectionStatus(): WhatsAppConnectionStatus {
