@@ -10,6 +10,7 @@ Serviço para integração com WhatsApp usando Baileys. Permite múltiplas conex
 - [Handlers de Mensagem](#handlers-de-mensagem)
 - [Callbacks de Mensagens](#callbacks-de-mensagens)
 - [API Completa](#api-completa)
+- [Variáveis de Ambiente](#variáveis-de-ambiente)
 - [Exemplos](#exemplos)
 - [Troubleshooting](#troubleshooting)
 
@@ -18,6 +19,17 @@ Serviço para integração com WhatsApp usando Baileys. Permite múltiplas conex
 ```bash
 npm install
 ```
+
+### Configuração de Variáveis de Ambiente
+
+1. Copie o arquivo de exemplo:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edite o arquivo `.env` com suas configurações
+
+Para mais detalhes sobre as variáveis disponíveis, consulte [ENV.md](./ENV.md).
 
 ## 📖 Uso Básico
 
@@ -435,6 +447,31 @@ interface OutboundMessageData {
   timestamp: Date;         // Data/hora
   to: string;              // JID completo do destinatário
 }
+```
+
+## ⚙️ Variáveis de Ambiente
+
+O projeto suporta configuração via variáveis de ambiente. Consulte [ENV.md](./ENV.md) para documentação completa.
+
+### Variáveis Principais
+
+- `PORT`: Porta do servidor dashboard (padrão: `3000`)
+- `DASHBOARD_HOST`: Host do dashboard (padrão: `localhost`)
+- `AUTH_BASE_DIR`: Diretório base para autenticação (padrão: `.whatsapp-auth`)
+- `LOG_LEVEL`: Nível de log (padrão: `silent`)
+- `ENABLE_CORS`: Habilitar CORS (padrão: `true`)
+- `MAX_INSTANCES`: Limite de instâncias (padrão: `0` = ilimitado)
+
+### Exemplo Rápido
+
+```bash
+# Criar arquivo .env
+cp .env.example .env
+
+# Editar .env
+PORT=8080
+DASHBOARD_HOST=0.0.0.0
+LOG_LEVEL=info
 ```
 
 ## 💡 Exemplos

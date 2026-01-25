@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Baileys Core - Dashboard de Conexões</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 28px;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #10b981;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e5e7eb;
+        }
+
+        .connections-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .connection-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .connection-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .instance-id {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-connected {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-connecting {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-disconnected {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .card-body {
+            margin-bottom: 16px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .info-label {
+            color: #6b7280;
+        }
+
+        .info-value {
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .last-message {
+            background: #f9fafb;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+            border-left: 3px solid #667eea;
+        }
+
+        .last-message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .message-direction {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .direction-inbound {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .direction-outbound {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .message-content {
+            font-size: 14px;
+            color: #1f2937;
+            word-break: break-word;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            font-size: 20px;
+            color: #1f2937;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .empty-state {
+            background: white;
+            border-radius: 12px;
+            padding: 48px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+
+        .empty-state h2 {
+            font-size: 24px;
+            color: #1f2937;
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            color: #6b7280;
+            margin-bottom: 24px;
+        }
+
+        .timestamp {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 8px;
+        }
+
+        .qr-code-container {
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 12px;
+            text-align: center;
+        }
+
+        .qr-code-container h4 {
+            font-size: 14px;
+            color: #374151;
+            margin-bottom: 12px;
+        }
+
+        .qr-code-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+
+        .qr-code-text {
+            font-size: 11px;
+            color: #6b7280;
+            margin-top: 8px;
+        }
+
+        .btn-remove {
+            background: #dc2626;
+            color: white;
+        }
+
+        .btn-remove:hover {
+            background: #b91c1c;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>
+                <span>📱 Baileys Core Dashboard</span>
+                <span class="status-indicator"></span>
+            </h1>
+            <div class="actions">
+                <button class="btn-primary" onclick="openCreateInstanceModal()">+ Nova Instância</button>
+                <button class="btn-secondary" onclick="refreshConnections()">🔄 Atualizar</button>
+            </div>
+        </header>
+
+        <div id="connections-container">
+            <div class="empty-state">
+                <div class="empty-state-icon">📭</div>
+                <h2>Nenhuma conexão ativa</h2>
+                <p>Crie uma nova instância para começar a monitorar conexões WhatsApp</p>
+                <button class="btn-primary" onclick="openCreateInstanceModal()">Criar Primeira Instância</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Criar Instância -->
+    <div id="createInstanceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Nova Instância</h2>
+            </div>
+            <form onsubmit="createInstance(event)">
+                <div class="form-group">
+                    <label>ID da Instância</label>
+                    <input type="text" id="instanceId" placeholder="ex: cliente-1" required>
+                </div>
+                <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <button type="submit" class="btn-primary" style="flex: 1;">Criar</button>
+                    <button type="button" class="btn-secondary" onclick="closeModal('createInstanceModal')" style="flex: 1;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Enviar Mensagem -->
+    <div id="sendMessageModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Enviar Mensagem</h2>
+            </div>
+            <form onsubmit="sendMessage(event)">
+                <input type="hidden" id="sendMessageInstanceId">
+                <div class="form-group">
+                    <label>Para (Número)</label>
+                    <input type="text" id="sendMessageTo" placeholder="5511999999999" required>
+                </div>
+                <div class="form-group">
+                    <label>Mensagem</label>
+                    <textarea id="sendMessageText" placeholder="Digite sua mensagem..." required></textarea>
+                </div>
+                <div style="display: flex; gap: 12px; margin-top: 24px;">
+                    <button type="submit" class="btn-primary" style="flex: 1;">Enviar</button>
+                    <button type="button" class="btn-secondary" onclick="closeModal('sendMessageModal')" style="flex: 1;">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let connections = [];
+
+        // Conectar ao Server-Sent Events
+        function connectSSE() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource('/events');
+
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'update') {
+                    connections = data.connections;
+                    renderConnections();
+                }
+            };
+
+            eventSource.onerror = () => {
+                console.error('Erro na conexão SSE');
+                setTimeout(connectSSE, 3000);
+            };
+        }
+
+        // Renderizar conexões
+        function renderConnections() {
+            const container = document.getElementById('connections-container');
+
+            if (connections.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <h2>Nenhuma conexão ativa</h2>
+                        <p>Crie uma nova instância para começar a monitorar conexões WhatsApp</p>
+                        <button class="btn-primary" onclick="openCreateInstanceModal()">Criar Primeira Instância</button>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="connections-grid">
+                    ${connections.map(conn => renderConnectionCard(conn)).join('')}
+                </div>
+            `;
+        }
+
+        // Renderizar card de conexão
+        function renderConnectionCard(conn) {
+            const statusClass = `status-${conn.status}`;
+            const statusText = {
+                'connected': 'Conectado',
+                'connecting': 'Conectando',
+                'disconnected': 'Desconectado',
+                'error': 'Erro'
+            }[conn.status] || conn.status;
+
+            const qrCodeHtml = conn.qrCode ? `
+                <div class="qr-code-container">
+                    <h4>📱 Escaneie o QR Code</h4>
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(conn.qrCode)}" 
+                         alt="QR Code" 
+                         class="qr-code-image">
+                    <div class="qr-code-text">
+                        No WhatsApp: Menu > Aparelhos conectados > Conectar um aparelho
+                    </div>
+                </div>
+            ` : '';
+
+            const lastMessageHtml = conn.lastMessage ? `
+                <div class="last-message">
+                    <div class="last-message-header">
+                        <span class="message-direction direction-${conn.lastMessage.direction}">
+                            ${conn.lastMessage.direction === 'inbound' ? '📥 Recebida' : '📤 Enviada'}
+                        </span>
+                        <span>${formatDate(conn.lastMessage.timestamp)}</span>
+                    </div>
+                    <div class="message-content">
+                        ${conn.lastMessage.from ? `De: ${conn.lastMessage.from}` : ''}
+                        ${conn.lastMessage.to ? `Para: ${conn.lastMessage.to}` : ''}
+                        <br>
+                        ${escapeHtml(conn.lastMessage.message)}
+                    </div>
+                </div>
+            ` : '<div style="color: #9ca3af; font-size: 14px;">Nenhuma mensagem ainda</div>';
+
+            return `
+                <div class="connection-card">
+                    <div class="card-header">
+                        <span class="instance-id">${escapeHtml(conn.instanceId)}</span>
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="info-row">
+                            <span class="info-label">Status:</span>
+                            <span class="info-value">${statusText}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Handlers:</span>
+                            <span class="info-value">${conn.handlersCount}</span>
+                        </div>
+                        ${qrCodeHtml}
+                        ${lastMessageHtml}
+                    </div>
+                    <div class="card-actions">
+                        ${conn.status !== 'connected' ? `
+                            <button class="btn-success btn-small" onclick="connectInstance('${conn.instanceId}')">
+                                Conectar
+                            </button>
+                        ` : ''}
+                        <button class="btn-primary btn-small" onclick="openSendMessageModal('${conn.instanceId}')">
+                            Enviar Mensagem
+                        </button>
+                        <button class="btn-danger btn-small" onclick="disconnectInstance('${conn.instanceId}')">
+                            Desconectar
+                        </button>
+                        <button class="btn-remove btn-small" onclick="deleteInstance('${conn.instanceId}')" title="Remover conexão">
+                            🗑️ Remover
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Criar instância
+        async function createInstance(event) {
+            event.preventDefault();
+            const instanceId = document.getElementById('instanceId').value;
+
+            try {
+                const response = await fetch('/api/instances', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ instanceId })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    closeModal('createInstanceModal');
+                    document.getElementById('instanceId').value = '';
+                    refreshConnections();
+                } else {
+                    alert('Erro: ' + data.error);
+                }
+            } catch (error) {
+                alert('Erro ao criar instância: ' + error.message);
+            }
+        }
+
+        // Conectar instância
+        async function connectInstance(instanceId) {
+            try {
+                const response = await fetch(`/api/instances/${instanceId}/connect`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    refreshConnections();
+                } else {
+                    alert('Erro: ' + data.error);
+                }
+            } catch (error) {
+                alert('Erro ao conectar: ' + error.message);
+            }
+        }
+
+        // Desconectar instância
+        async function disconnectInstance(instanceId) {
+            if (!confirm('Tem certeza que deseja desconectar esta instância?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/instances/${instanceId}/disconnect`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    refreshConnections();
+                } else {
+                    alert('Erro: ' + data.error);
+                }
+            } catch (error) {
+                alert('Erro ao desconectar: ' + error.message);
+            }
+        }
+
+        // Remover instância
+        async function deleteInstance(instanceId) {
+            if (!confirm('Tem certeza que deseja REMOVER esta conexão? Esta ação não pode ser desfeita.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/instances/${instanceId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    refreshConnections();
+                } else {
+                    alert('Erro: ' + data.error);
+                }
+            } catch (error) {
+                alert('Erro ao remover: ' + error.message);
+            }
+        }
+
+        // Enviar mensagem
+        async function sendMessage(event) {
+            event.preventDefault();
+            const instanceId = document.getElementById('sendMessageInstanceId').value;
+            const to = document.getElementById('sendMessageTo').value;
+            const message = document.getElementById('sendMessageText').value;
+
+            try {
+                const response = await fetch(`/api/instances/${instanceId}/send`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ to, message })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    closeModal('sendMessageModal');
+                    document.getElementById('sendMessageTo').value = '';
+                    document.getElementById('sendMessageText').value = '';
+                    refreshConnections();
+                } else {
+                    alert('Erro: ' + data.error);
+                }
+            } catch (error) {
+                alert('Erro ao enviar mensagem: ' + error.message);
+            }
+        }
+
+        // Abrir modais
+        function openCreateInstanceModal() {
+            document.getElementById('createInstanceModal').classList.add('active');
+        }
+
+        function openSendMessageModal(instanceId) {
+            document.getElementById('sendMessageInstanceId').value = instanceId;
+            document.getElementById('sendMessageModal').classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // Atualizar conexões
+        async function refreshConnections() {
+            try {
+                const response = await fetch('/api/connections');
+                const data = await response.json();
+                connections = data.connections;
+                renderConnections();
+            } catch (error) {
+                console.error('Erro ao atualizar:', error);
+            }
+        }
+
+        // Utilitários
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString('pt-BR');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Inicializar
+        connectSSE();
+        refreshConnections();
+
+        // Atualizar a cada 5 segundos como fallback
+        setInterval(refreshConnections, 5000);
+    </script>
+</body>
+</html>

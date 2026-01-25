@@ -59,6 +59,8 @@ import makeWASocket, {
     private messageHandlers: Map<string, (message: WhatsAppMessage) => void> = new Map();
     private onInboundMessageCallbacks: Map<string, (data: InboundMessageData) => void> = new Map();
     private onOutboundMessageCallbacks: Map<string, (data: OutboundMessageData) => void> = new Map();
+    private onQrCodeCallbacks: Map<string, (qr: string) => void> = new Map();
+    private currentQrCode: string | null = null;
   
     constructor(authDir?: string, instanceId?: string) {
       this.authDir = authDir ?? join(__dirname, '../../.whatsapp-auth');
@@ -102,14 +104,27 @@ import makeWASocket, {
   
         this.socket.ev.on('creds.update', saveCreds);
   
-        this.socket.ev.on('connection.update', (update) => {
+        this.socket.ev.on('connection.update', (update: any) => {
           const { connection, lastDisconnect, qr } = update;
   
           if (qr) {
+            this.currentQrCode = qr;
             const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
             console.log(`\n${instanceLabel}📱 Escaneie o QR Code abaixo com o WhatsApp:\n`);
             qrcode.generate(qr, { small: true });
             console.log(`\n${instanceLabel}💡 No WhatsApp: Menu > Aparelhos conectados > Conectar um aparelho\n`);
+            
+            // Executar callbacks de QR code
+            this.onQrCodeCallbacks.forEach((callback) => {
+              try {
+                callback(qr);
+              } catch (error) {
+                const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+                console.error(`${instanceLabel}Erro ao executar callback de QR code:`, error);
+              }
+            });
+          } else {
+            this.currentQrCode = null;
           }
   
           if (connection === 'close') {
@@ -132,7 +147,7 @@ import makeWASocket, {
           }
         });
   
-        this.socket.ev.on('messages.upsert', ({ messages, type }) => {
+        this.socket.ev.on('messages.upsert', ({ messages, type }: { messages: any[], type: string }) => {
           if (type !== 'notify') return;
   
           for (const message of messages) {
@@ -335,6 +350,47 @@ import makeWASocket, {
     clearAllCallbacks(): void {
       this.onInboundMessageCallbacks.clear();
       this.onOutboundMessageCallbacks.clear();
+      this.onQrCodeCallbacks.clear();
+    }
+
+    /**
+     * Registrar callback para quando um QR code for gerado
+     * @param callback Função callback que será chamada quando um QR code for gerado
+     * @param callbackId ID opcional para identificar o callback
+     * @returns O ID do callback (gerado automaticamente se não fornecido)
+     */
+    onQrCode(callback: (qr: string) => void, callbackId?: string): string {
+      const id = callbackId ?? `qrcode_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      this.onQrCodeCallbacks.set(id, callback);
+      
+      // Se já existe um QR code, chamar o callback imediatamente
+      if (this.currentQrCode) {
+        try {
+          callback(this.currentQrCode);
+        } catch (error) {
+          const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+          console.error(`${instanceLabel}Erro ao executar callback de QR code:`, error);
+        }
+      }
+      
+      return id;
+    }
+
+    /**
+     * Remover callback de QR code específico desta instância
+     * @param callbackId ID do callback a ser removido
+     * @returns true se o callback foi removido, false se não foi encontrado
+     */
+    offQrCode(callbackId: string): boolean {
+      return this.onQrCodeCallbacks.delete(callbackId);
+    }
+
+    /**
+     * Obter QR code atual (se disponível)
+     * @returns QR code atual ou null se não houver
+     */
+    getCurrentQrCode(): string | null {
+      return this.currentQrCode;
     }
   
     getConnectionStatus(): WhatsAppConnectionStatus {

@@ -1,5 +1,6 @@
 import { BaileysService, WhatsAppMessage } from './baileys-service.js';
 import { join } from 'path';
+import { getAuthDir, appConfig } from './config.js';
 
 /**
  * Exemplo de como usar múltiplas instâncias do BaileysService
@@ -104,7 +105,17 @@ export class BaileysServiceManager {
       throw new Error(`Instância com ID "${instanceId}" já existe`);
     }
     
-    const authPath = authDir ?? join(process.cwd(), `.whatsapp-auth-${instanceId}`);
+    // Validar limite de instâncias
+    if (appConfig.maxInstances > 0 && this.instances.size >= appConfig.maxInstances) {
+      throw new Error(`Limite máximo de ${appConfig.maxInstances} instâncias atingido`);
+    }
+    
+    // Usar prefixo no authDir se configurado, mas manter instanceId original no Map
+    const authInstanceId = appConfig.instancePrefix 
+      ? `${appConfig.instancePrefix}-${instanceId}` 
+      : instanceId;
+    
+    const authPath = authDir ?? getAuthDir(authInstanceId);
     const instance = new BaileysService(authPath, instanceId);
     this.instances.set(instanceId, instance);
     
