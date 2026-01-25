@@ -48,48 +48,6 @@ export async function exemploBasico() {
   // await whatsapp.disconnect();
 }
 
-// Exemplo com repositório de mensagens
-export async function exemploComRepositorio() {
-  const whatsapp = new BaileysService();
-  
-  // Criar um repositório simples (você pode implementar o seu)
-  const messageRepository = {
-    save: (message: any) => {
-      console.log('💾 Salvando mensagem:', message);
-      // Aqui você salvaria no banco de dados
-    },
-    findLatestByPhoneNumber: (phoneNumber: string) => {
-      console.log('🔍 Buscando última mensagem de:', phoneNumber);
-      // Retornar última mensagem do banco de dados
-      return undefined;
-    },
-    updateRfqId: (messageId: string, rfqId: string) => {
-      console.log(`🔄 Atualizando RFQ ID: ${messageId} -> ${rfqId}`);
-      // Atualizar no banco de dados
-      return true;
-    }
-  };
-  
-  // Configurar o repositório
-  whatsapp.setMessageRepository(messageRepository);
-  
-  // Conectar
-  await whatsapp.connect();
-  
-  // Aguardar conexão
-  while (whatsapp.getConnectionStatus() !== 'connected') {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-  
-  // Enviar mensagem com RFQ ID
-  await whatsapp.sendMessage(
-    '5511999999999',
-    'Sua mensagem aqui',
-    'RFQ-12345', // RFQ ID opcional
-    'quote-id-123' // Quote ID opcional
-  );
-}
-
 // Exemplo com tratamento de erros
 export async function exemploComTratamentoErros() {
   const whatsapp = new BaileysService();
@@ -165,4 +123,57 @@ export async function exemploMultiplasInstanciasComHandlers() {
   // whatsapp1.clearMessageHandlers();
   
   return { whatsapp1, whatsapp2 };
+}
+
+// Exemplo com callbacks de mensagens (substituindo o messageRepository)
+export async function exemploComCallbacks() {
+  const whatsapp = new BaileysService();
+
+  // Callback para mensagens recebidas (inbound) - similar ao que o messageRepository fazia
+  whatsapp.onInboundMessage((data) => {
+    console.log('💾 [Callback Inbound] Salvando mensagem recebida:', {
+      id: data.id,
+      phoneNumber: data.phoneNumber,
+      content: data.content,
+      timestamp: data.timestamp,
+      from: data.from,
+    });
+    // Aqui você pode salvar no banco de dados, fazer processamento, etc.
+  }, 'save-inbound-messages');
+
+  // Callback para mensagens enviadas (outbound) - similar ao que o messageRepository fazia
+  whatsapp.onOutboundMessage((data) => {
+    console.log('💾 [Callback Outbound] Salvando mensagem enviada:', {
+      id: data.id,
+      phoneNumber: data.phoneNumber,
+      content: data.content,
+      timestamp: data.timestamp,
+      to: data.to,
+    });
+    // Aqui você pode salvar no banco de dados, fazer processamento, etc.
+  }, 'save-outbound-messages');
+
+  // Conectar
+  await whatsapp.connect();
+
+  // Aguardar conexão
+  while (whatsapp.getConnectionStatus() !== 'connected') {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  // Handler de mensagem para processar a mensagem recebida
+  whatsapp.onMessage((message) => {
+    console.log(`Mensagem recebida: ${message.message}`);
+  });
+
+  // Enviar uma mensagem (vai disparar o callback onOutboundMessage)
+  await whatsapp.sendMessage('5511999999999', 'Teste de callback');
+
+  // Exemplo: remover um callback específico
+  // whatsapp.offInboundMessage('save-inbound-messages');
+
+  // Exemplo: limpar todos os callbacks
+  // whatsapp.clearAllCallbacks();
+
+  return whatsapp;
 }

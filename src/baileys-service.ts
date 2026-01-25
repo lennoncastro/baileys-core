@@ -31,6 +31,25 @@ import makeWASocket, {
     timestamp: Date;
     messageId?: string;
   }
+
+  export interface InboundMessageData {
+    id: string;
+    phoneNumber: string;
+    direction: 'inbound';
+    content: string;
+    timestamp: Date;
+    from: string;
+    messageId?: string;
+  }
+
+  export interface OutboundMessageData {
+    id: string;
+    phoneNumber: string;
+    direction: 'outbound';
+    content: string;
+    timestamp: Date;
+    to: string;
+  }
   
   export class BaileysService {
     private socket: WASocket | null = null;
@@ -38,11 +57,8 @@ import makeWASocket, {
     private authDir: string;
     private instanceId?: string;
     private messageHandlers: Map<string, (message: WhatsAppMessage) => void> = new Map();
-    public messageRepository?: { 
-      save: (message: any) => void;
-      findLatestByPhoneNumber: (phoneNumber: string) => any | undefined;
-      updateRfqId: (messageId: string, rfqId: string) => boolean;
-    };
+    private onInboundMessageCallbacks: Map<string, (data: InboundMessageData) => void> = new Map();
+    private onOutboundMessageCallbacks: Map<string, (data: OutboundMessageData) => void> = new Map();
   
     constructor(authDir?: string, instanceId?: string) {
       this.authDir = authDir ?? join(__dirname, '../../.whatsapp-auth');
@@ -61,14 +77,6 @@ import makeWASocket, {
      */
     setInstanceId(instanceId: string): void {
       this.instanceId = instanceId;
-    }
-  
-    setMessageRepository(repository: { 
-      save: (message: any) => void;
-      findLatestByPhoneNumber: (phoneNumber: string) => any | undefined;
-      updateRfqId: (messageId: string, rfqId: string) => boolean;
-    }): void {
-      this.messageRepository = repository;
     }
   
     async connect(): Promise<void> {
@@ -135,21 +143,30 @@ import makeWASocket, {
                   from: message.key.remoteJid ?? '',
                   message: messageText,
                   timestamp: new Date(),
+                  messageId: message.key.id || undefined,
                 };
-  
-                // Salvar mensagem recebida
-                if (this.messageRepository) {
-                  const phoneNumber = whatsappMessage.from.replace('@s.whatsapp.net', '').replace('@c.us', '');
-                  const messageId = message.key.id ?? `msg_${Date.now()}_${Math.random()}`;
-                  this.messageRepository.save({
-                    id: messageId,
-                    phoneNumber,
-                    direction: 'inbound',
-                    content: messageText,
-                    timestamp: whatsappMessage.timestamp,
-                  });
-                  whatsappMessage.messageId = messageId;
-                }
+
+                // Executar callbacks de mensagem recebida (inbound)
+                const phoneNumber = whatsappMessage.from.replace('@s.whatsapp.net', '').replace('@c.us', '');
+                const messageId = message.key.id || `msg_${Date.now()}_${Math.random()}`;
+                const inboundData: InboundMessageData = {
+                  id: messageId,
+                  phoneNumber,
+                  direction: 'inbound',
+                  content: messageText,
+                  timestamp: whatsappMessage.timestamp,
+                  from: whatsappMessage.from,
+                  messageId: whatsappMessage.messageId,
+                };
+
+                this.onInboundMessageCallbacks.forEach((callback, callbackId) => {
+                  try {
+                    callback(inboundData);
+                  } catch (error) {
+                    const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+                    console.error(`${instanceLabel}Erro ao executar callback de mensagem recebida "${callbackId}":`, error);
+                  }
+                });
   
                 // Executar todos os handlers desta instância
                 this.messageHandlers.forEach((handler, handlerId) => {
@@ -172,35 +189,41 @@ import makeWASocket, {
       }
     }
   
-    async sendMessage(to: string, message: string, rfqId?: string, quoteId?: string): Promise<void> {
+    async sendMessage(to: string, message: string): Promise<void> {
       if (!this.socket || this.connectionStatus !== 'connected') {
         throw new Error('WhatsApp não está conectado');
       }
   
       const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
-      const phoneNumber = to.replace('@s.whatsapp.net', '').replace('@c.us', '');
       const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
       
       console.log(`${instanceLabel}📤 WhatsAppService.sendMessage: Enviando para ${jid} (${to})`);
       console.log(`${instanceLabel}   Mensagem (primeiros 100 chars): ${message.substring(0, 100)}...`);
       
       try {
-        await this.socket.sendMessage(jid, { text: message });
+        const result = await this.socket.sendMessage(jid, { text: message });
         const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
         console.log(`${instanceLabel}✅ Mensagem enviada com sucesso para ${jid}`);
-  
-        // Salvar mensagem enviada
-        if (this.messageRepository) {
-          this.messageRepository.save({
-            id: `msg_${Date.now()}_${Math.random()}`,
-            phoneNumber,
-            direction: 'outbound',
-            content: message,
-            timestamp: new Date(),
-            rfqId,
-            quoteId,
-          });
-        }
+
+        // Executar callbacks de mensagem enviada (outbound)
+        const phoneNumber = to.replace('@s.whatsapp.net', '').replace('@c.us', '');
+        const outboundData: OutboundMessageData = {
+          id: result?.key?.id || `msg_${Date.now()}_${Math.random()}`,
+          phoneNumber,
+          direction: 'outbound',
+          content: message,
+          timestamp: new Date(),
+          to: jid,
+        };
+
+        this.onOutboundMessageCallbacks.forEach((callback, callbackId) => {
+          try {
+            callback(outboundData);
+          } catch (error) {
+            const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+            console.error(`${instanceLabel}Erro ao executar callback de mensagem enviada "${callbackId}":`, error);
+          }
+        });
       } catch (error) {
         const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
         console.error(`${instanceLabel}❌ Erro ao enviar mensagem para ${jid}:`, error);
@@ -248,6 +271,70 @@ import makeWASocket, {
      */
     getMessageHandlerIds(): string[] {
       return Array.from(this.messageHandlers.keys());
+    }
+
+    /**
+     * Registrar callback para quando uma mensagem é recebida (inbound)
+     * @param callback Função callback que será chamada quando uma mensagem for recebida
+     * @param callbackId ID opcional para identificar o callback (útil para remover depois)
+     * @returns O ID do callback (gerado automaticamente se não fornecido)
+     */
+    onInboundMessage(callback: (data: InboundMessageData) => void, callbackId?: string): string {
+      const id = callbackId ?? `inbound_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      this.onInboundMessageCallbacks.set(id, callback);
+      return id;
+    }
+
+    /**
+     * Remover callback de mensagem recebida específico desta instância
+     * @param callbackId ID do callback a ser removido
+     * @returns true se o callback foi removido, false se não foi encontrado
+     */
+    offInboundMessage(callbackId: string): boolean {
+      return this.onInboundMessageCallbacks.delete(callbackId);
+    }
+
+    /**
+     * Registrar callback para quando uma mensagem é enviada (outbound)
+     * @param callback Função callback que será chamada quando uma mensagem for enviada
+     * @param callbackId ID opcional para identificar o callback (útil para remover depois)
+     * @returns O ID do callback (gerado automaticamente se não fornecido)
+     */
+    onOutboundMessage(callback: (data: OutboundMessageData) => void, callbackId?: string): string {
+      const id = callbackId ?? `outbound_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      this.onOutboundMessageCallbacks.set(id, callback);
+      return id;
+    }
+
+    /**
+     * Remover callback de mensagem enviada específico desta instância
+     * @param callbackId ID do callback a ser removido
+     * @returns true se o callback foi removido, false se não foi encontrado
+     */
+    offOutboundMessage(callbackId: string): boolean {
+      return this.onOutboundMessageCallbacks.delete(callbackId);
+    }
+
+    /**
+     * Limpar todos os callbacks de mensagem recebida desta instância
+     */
+    clearInboundMessageCallbacks(): void {
+      this.onInboundMessageCallbacks.clear();
+    }
+
+    /**
+     * Limpar todos os callbacks de mensagem enviada desta instância
+     */
+    clearOutboundMessageCallbacks(): void {
+      this.onOutboundMessageCallbacks.clear();
+    }
+
+    /**
+     * Limpar todos os callbacks (inbound e outbound) desta instância
+     */
+    clearAllCallbacks(): void {
+      this.onInboundMessageCallbacks.clear();
+      this.onOutboundMessageCallbacks.clear();
     }
   
     getConnectionStatus(): WhatsAppConnectionStatus {
