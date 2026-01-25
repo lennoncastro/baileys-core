@@ -7,9 +7,10 @@ import makeWASocket, {
   } from '@whiskeysockets/baileys';
   import type { WASocket } from '@whiskeysockets/baileys';
   import { Boom } from '@hapi/boom';
-  import pino from 'pino';
-  import { join, dirname } from 'path';
-  import qrcode from 'qrcode-terminal';
+import pino from 'pino';
+import { join, dirname } from 'path';
+import qrcode from 'qrcode-terminal';
+import { rmSync, existsSync } from 'fs';
   
   const getDirname = (): string => {
     try {
@@ -155,7 +156,8 @@ import makeWASocket, {
               this.connect();
             } else {
               const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
-              console.log(`${instanceLabel}❌ Conexão com WhatsApp encerrada. Faça login novamente.`);
+              console.log(`${instanceLabel}❌ Conexão com WhatsApp encerrada.`);
+              console.log(`${instanceLabel}💡 Para gerar um novo QR code, chame: whatsapp.generateNewQrCode()`);
             }
           } else if (connection === 'open') {
             this.connectionStatus = 'connected';
@@ -498,6 +500,37 @@ import makeWASocket, {
           }
         });
       }
+    }
+
+    /**
+     * Gera um novo QR code manualmente, limpando as credenciais existentes
+     * Útil quando o usuário foi deslogado e precisa fazer login novamente
+     */
+    async generateNewQrCode(): Promise<void> {
+      const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+      
+      // Desconectar se estiver conectado
+      if (this.socket) {
+        await this.disconnect();
+      }
+      
+      // Limpar credenciais para forçar geração de novo QR code
+      if (existsSync(this.authDir)) {
+        try {
+          rmSync(this.authDir, { recursive: true, force: true });
+          console.log(`${instanceLabel}🗑️ Credenciais antigas removidas.`);
+        } catch (error) {
+          const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+          console.error(`${instanceLabel}Erro ao limpar credenciais:`, error);
+        }
+      }
+      
+      // Limpar QR code atual
+      this.currentQrCode = null;
+      
+      // Reconectar para gerar novo QR code
+      console.log(`${instanceLabel}🔄 Gerando novo QR code...`);
+      await this.connect();
     }
   
     private extractMessageText(message: any): string | null {
