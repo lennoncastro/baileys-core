@@ -347,7 +347,7 @@ whatsapp.onDisconnect((reason) => {
   
   if (reason === 'loggedOut') {
     console.log('⚠️ Você precisa fazer login novamente');
-    // Limpar credenciais, mostrar QR code novamente, etc.
+    // Gerar novo QR code: await whatsapp.generateNewQrCode();
   } else if (reason?.startsWith('error_')) {
     console.log('⚠️ Erro na conexão, tentando reconectar...');
     // O sistema tentará reconectar automaticamente
@@ -420,6 +420,42 @@ whatsapp.onQrCode((qr) => {
 }, 'qrcode-handler');
 ```
 
+### Gerar Novo QR Code Manualmente (`generateNewQrCode`)
+
+Quando o usuário é deslogado (`loggedOut`), você pode gerar um novo QR code manualmente chamando este método. Ele limpa as credenciais antigas e reconecta para gerar um novo QR code.
+
+```typescript
+// Gerar novo QR code manualmente
+await whatsapp.generateNewQrCode();
+```
+
+**Quando usar:**
+- Quando o usuário foi deslogado (`reason === 'loggedOut'` no callback de desconexão)
+- Quando você precisa forçar uma nova autenticação
+- Quando as credenciais estão corrompidas ou inválidas
+
+**O que o método faz:**
+1. Desconecta se estiver conectado
+2. Remove as credenciais antigas do diretório de autenticação
+3. Reconecta automaticamente para gerar um novo QR code
+
+**Exemplo com callback de desconexão:**
+
+```typescript
+whatsapp.onDisconnect((reason) => {
+  console.log(`❌ Desconectado. Motivo: ${reason}`);
+  
+  if (reason === 'loggedOut') {
+    console.log('⚠️ Usuário deslogado. Gerando novo QR code...');
+    // Gerar novo QR code automaticamente quando deslogado
+    await whatsapp.generateNewQrCode();
+  } else if (reason?.startsWith('error_')) {
+    console.log('⚠️ Erro na conexão, tentando reconectar...');
+    // O sistema tentará reconectar automaticamente
+  }
+}, 'disconnect-handler');
+```
+
 ## 📚 API Completa
 
 ### `BaileysService`
@@ -440,6 +476,23 @@ Conecta ao WhatsApp. Mostra QR Code no terminal na primeira conexão.
 
 ##### `disconnect(): Promise<void>`
 Desconecta do WhatsApp.
+
+##### `generateNewQrCode(): Promise<void>`
+Gera um novo QR code manualmente, limpando as credenciais existentes. Útil quando o usuário foi deslogado e precisa fazer login novamente.
+
+- Desconecta se estiver conectado
+- Remove as credenciais antigas do diretório de autenticação
+- Reconecta automaticamente para gerar um novo QR code
+
+**Exemplo:**
+```typescript
+// Quando o usuário foi deslogado
+whatsapp.onDisconnect((reason) => {
+  if (reason === 'loggedOut') {
+    await whatsapp.generateNewQrCode();
+  }
+});
+```
 
 ##### `getConnectionStatus(): WhatsAppConnectionStatus`
 Retorna o status atual da conexão:
@@ -712,13 +765,16 @@ whatsapp.onConnect(() => {
 }, 'connect-handler');
 
 // Callback quando desconectar
-whatsapp.onDisconnect((reason) => {
+whatsapp.onDisconnect(async (reason) => {
   console.log(`❌ Desconectado. Motivo: ${reason}`);
   
   if (reason === 'loggedOut') {
-    console.log('⚠️ Faça login novamente');
+    console.log('⚠️ Usuário deslogado. Gerando novo QR code...');
+    // Gerar novo QR code automaticamente
+    await whatsapp.generateNewQrCode();
   } else if (reason?.startsWith('error_')) {
     console.log('⚠️ Erro na conexão');
+    // O sistema tentará reconectar automaticamente
   }
 }, 'disconnect-handler');
 
@@ -754,6 +810,7 @@ node dist/run-example.js
 ### Erro ao conectar
 - Verifique se o diretório de autenticação existe e tem permissões de escrita
 - Tente remover o diretório `.whatsapp-auth` e reconectar
+- Se o usuário foi deslogado, use `generateNewQrCode()` para gerar um novo QR code
 
 ### Múltiplas instâncias compartilhando credenciais
 - Certifique-se de que cada instância usa um `authDir` diferente
@@ -767,7 +824,8 @@ node dist/run-example.js
 
 - **Primeira conexão**: Será necessário escanear o QR Code com o WhatsApp
 - **Credenciais**: São salvas automaticamente no diretório especificado
-- **Reconexão**: O serviço reconecta automaticamente em caso de desconexão
+- **Reconexão**: O serviço reconecta automaticamente em caso de desconexão (exceto quando `loggedOut`)
+- **QR Code Manual**: Quando o usuário é deslogado, use `generateNewQrCode()` para gerar um novo QR code
 - **Múltiplas instâncias**: Cada instância precisa de um número de WhatsApp diferente
 - **Handlers**: Cada instância mantém seus próprios handlers e callbacks
 - **Callbacks vs Handlers**: 
