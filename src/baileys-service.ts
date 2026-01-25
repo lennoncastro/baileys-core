@@ -60,6 +60,8 @@ import makeWASocket, {
     private onInboundMessageCallbacks: Map<string, (data: InboundMessageData) => void> = new Map();
     private onOutboundMessageCallbacks: Map<string, (data: OutboundMessageData) => void> = new Map();
     private onQrCodeCallbacks: Map<string, (qr: string) => void> = new Map();
+    private onDisconnectCallbacks: Map<string, (reason?: string) => void> = new Map();
+    private onConnectCallbacks: Map<string, () => void> = new Map();
     private currentQrCode: string | null = null;
   
     constructor(authDir?: string, instanceId?: string) {
@@ -129,14 +131,29 @@ import makeWASocket, {
   
           if (connection === 'close') {
             const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+            const disconnectReason = (lastDisconnect?.error as Boom)?.output?.statusCode === DisconnectReason.loggedOut 
+              ? 'loggedOut' 
+              : (lastDisconnect?.error as Boom)?.output?.statusCode 
+                ? `error_${(lastDisconnect?.error as Boom)?.output?.statusCode}` 
+                : 'unknown';
+            
+            this.connectionStatus = 'disconnected';
+            
+            // Executar callbacks de desconexão
+            this.onDisconnectCallbacks.forEach((callback, callbackId) => {
+              try {
+                callback(disconnectReason);
+              } catch (error) {
+                const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+                console.error(`${instanceLabel}Erro ao executar callback de desconexão "${callbackId}":`, error);
+              }
+            });
             
             if (shouldReconnect) {
-              this.connectionStatus = 'disconnected';
               const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
               console.log(`${instanceLabel}🔄 Reconectando ao WhatsApp...`);
               this.connect();
             } else {
-              this.connectionStatus = 'disconnected';
               const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
               console.log(`${instanceLabel}❌ Conexão com WhatsApp encerrada. Faça login novamente.`);
             }
@@ -144,6 +161,16 @@ import makeWASocket, {
             this.connectionStatus = 'connected';
             const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
             console.log(`${instanceLabel}✅ Conectado ao WhatsApp com sucesso!`);
+            
+            // Executar callbacks de conexão
+            this.onConnectCallbacks.forEach((callback, callbackId) => {
+              try {
+                callback();
+              } catch (error) {
+                const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+                console.error(`${instanceLabel}Erro ao executar callback de conexão "${callbackId}":`, error);
+              }
+            });
           }
         });
   
@@ -351,6 +378,64 @@ import makeWASocket, {
       this.onInboundMessageCallbacks.clear();
       this.onOutboundMessageCallbacks.clear();
       this.onQrCodeCallbacks.clear();
+      this.onDisconnectCallbacks.clear();
+      this.onConnectCallbacks.clear();
+    }
+
+    /**
+     * Registrar callback para quando a conexão é desconectada
+     * @param callback Função callback que será chamada quando a conexão for desconectada
+     * @param callbackId ID opcional para identificar o callback
+     * @returns O ID do callback (gerado automaticamente se não fornecido)
+     */
+    onDisconnect(callback: (reason?: string) => void, callbackId?: string): string {
+      const id = callbackId ?? `disconnect_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      this.onDisconnectCallbacks.set(id, callback);
+      return id;
+    }
+
+    /**
+     * Remover callback de desconexão específico desta instância
+     * @param callbackId ID do callback a ser removido
+     * @returns true se o callback foi removido, false se não foi encontrado
+     */
+    offDisconnect(callbackId: string): boolean {
+      return this.onDisconnectCallbacks.delete(callbackId);
+    }
+
+    /**
+     * Registrar callback para quando a conexão é estabelecida
+     * @param callback Função callback que será chamada quando a conexão for estabelecida
+     * @param callbackId ID opcional para identificar o callback
+     * @returns O ID do callback (gerado automaticamente se não fornecido)
+     */
+    onConnect(callback: () => void, callbackId?: string): string {
+      const id = callbackId ?? `connect_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      this.onConnectCallbacks.set(id, callback);
+      return id;
+    }
+
+    /**
+     * Remover callback de conexão específico desta instância
+     * @param callbackId ID do callback a ser removido
+     * @returns true se o callback foi removido, false se não foi encontrado
+     */
+    offConnect(callbackId: string): boolean {
+      return this.onConnectCallbacks.delete(callbackId);
+    }
+
+    /**
+     * Limpar todos os callbacks de desconexão desta instância
+     */
+    clearDisconnectCallbacks(): void {
+      this.onDisconnectCallbacks.clear();
+    }
+
+    /**
+     * Limpar todos os callbacks de conexão desta instância
+     */
+    clearConnectCallbacks(): void {
+      this.onConnectCallbacks.clear();
     }
 
     /**
@@ -402,6 +487,16 @@ import makeWASocket, {
         await this.socket.end(undefined);
         this.socket = null;
         this.connectionStatus = 'disconnected';
+        
+        // Executar callbacks de desconexão manual
+        this.onDisconnectCallbacks.forEach((callback, callbackId) => {
+          try {
+            callback('manual');
+          } catch (error) {
+            const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+            console.error(`${instanceLabel}Erro ao executar callback de desconexão "${callbackId}":`, error);
+          }
+        });
       }
     }
   

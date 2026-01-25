@@ -177,3 +177,48 @@ export async function exemploComCallbacks() {
 
   return whatsapp;
 }
+
+// Exemplo com callbacks de conexão e desconexão
+export async function exemploComCallbacksConexao() {
+  const whatsapp = new BaileysService();
+
+  // Callback para quando a conexão é estabelecida
+  whatsapp.onConnect(() => {
+    console.log('✅ Conexão estabelecida!');
+    // Aqui você pode fazer ações quando conectar, como notificar outros sistemas
+  }, 'connect-handler');
+
+  // Callback para quando a conexão é desconectada
+  whatsapp.onDisconnect((reason) => {
+    console.log(`❌ Conexão perdida. Motivo: ${reason}`);
+    
+    // Motivos possíveis:
+    // - 'loggedOut': Usuário fez logout
+    // - 'error_XXX': Erro com código específico
+    // - 'manual': Desconexão manual
+    // - 'unknown': Motivo desconhecido
+    
+    if (reason === 'loggedOut') {
+      console.log('⚠️ Você precisa fazer login novamente');
+    } else if (reason?.startsWith('error_')) {
+      console.log('⚠️ Erro na conexão, tentando reconectar...');
+    }
+    
+    // Aqui você pode fazer ações quando desconectar, como limpar cache, notificar, etc.
+  }, 'disconnect-handler');
+
+  // Conectar
+  await whatsapp.connect();
+
+  // Aguardar conexão
+  while (whatsapp.getConnectionStatus() !== 'connected') {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  // Exemplo: desconectar manualmente após 10 segundos
+  // setTimeout(async () => {
+  //   await whatsapp.disconnect();
+  // }, 10000);
+
+  return whatsapp;
+}

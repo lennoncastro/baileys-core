@@ -9,6 +9,7 @@ Serviço para integração com WhatsApp usando Baileys. Permite múltiplas conex
 - [Múltiplas Instâncias](#múltiplas-instâncias)
 - [Handlers de Mensagem](#handlers-de-mensagem)
 - [Callbacks de Mensagens](#callbacks-de-mensagens)
+- [Callbacks de Conexão e Desconexão](#callbacks-de-conexão-e-desconexão)
 - [API Completa](#api-completa)
 - [Variáveis de Ambiente](#variáveis-de-ambiente)
 - [Exemplos](#exemplos)
@@ -318,6 +319,107 @@ whatsapp.onMessage((message) => {
 await whatsapp.connect();
 ```
 
+## 🔌 Callbacks de Conexão e Desconexão
+
+Os callbacks de conexão e desconexão permitem monitorar o estado da conexão WhatsApp e reagir a mudanças.
+
+### Callback de Conexão (`onConnect`)
+
+```typescript
+whatsapp.onConnect(() => {
+  console.log('✅ Conexão estabelecida com sucesso!');
+  // Executado quando a conexão é estabelecida
+  // Aqui você pode fazer ações como notificar outros sistemas, atualizar status, etc.
+}, 'connect-handler');
+```
+
+### Callback de Desconexão (`onDisconnect`)
+
+```typescript
+whatsapp.onDisconnect((reason) => {
+  console.log(`❌ Conexão perdida. Motivo: ${reason}`);
+  
+  // Motivos possíveis:
+  // - 'loggedOut': Usuário fez logout do WhatsApp
+  // - 'error_XXX': Erro com código específico (ex: 'error_401', 'error_403')
+  // - 'manual': Desconexão manual via disconnect()
+  // - 'unknown': Motivo desconhecido
+  
+  if (reason === 'loggedOut') {
+    console.log('⚠️ Você precisa fazer login novamente');
+    // Limpar credenciais, mostrar QR code novamente, etc.
+  } else if (reason?.startsWith('error_')) {
+    console.log('⚠️ Erro na conexão, tentando reconectar...');
+    // O sistema tentará reconectar automaticamente
+  }
+  
+  // Aqui você pode fazer ações como limpar cache, notificar sistemas, etc.
+}, 'disconnect-handler');
+```
+
+### Gerenciar Callbacks de Conexão
+
+```typescript
+// Remover callbacks específicos
+whatsapp.offConnect('connect-handler');
+whatsapp.offDisconnect('disconnect-handler');
+
+// Limpar todos os callbacks de um tipo
+whatsapp.clearConnectCallbacks();
+whatsapp.clearDisconnectCallbacks();
+
+// Limpar todos os callbacks (incluindo conexão/desconexão)
+whatsapp.clearAllCallbacks();
+```
+
+### Exemplo Completo com Callbacks de Conexão
+
+```typescript
+const whatsapp = new BaileysService();
+
+// Callback de conexão
+whatsapp.onConnect(() => {
+  console.log('✅ Conectado ao WhatsApp!');
+  // Notificar sistema externo, atualizar status no banco, etc.
+}, 'connect-notifier');
+
+// Callback de desconexão
+whatsapp.onDisconnect((reason) => {
+  console.log(`❌ Desconectado. Motivo: ${reason}`);
+  
+  if (reason === 'loggedOut') {
+    // Usuário fez logout - precisa escanear QR code novamente
+    console.log('⚠️ Faça login novamente');
+  } else {
+    // Erro ou desconexão - sistema tentará reconectar
+    console.log('🔄 Tentando reconectar...');
+  }
+}, 'disconnect-handler');
+
+// Conectar
+await whatsapp.connect();
+
+// Aguardar conexão
+while (whatsapp.getConnectionStatus() !== 'connected') {
+  await new Promise(resolve => setTimeout(resolve, 1000));
+}
+
+// Exemplo: desconectar manualmente após algum tempo
+// setTimeout(async () => {
+//   await whatsapp.disconnect(); // Isso disparará o callback com reason='manual'
+// }, 60000);
+```
+
+### Callback de QR Code (`onQrCode`)
+
+```typescript
+whatsapp.onQrCode((qr) => {
+  console.log('📱 QR Code gerado:', qr);
+  // Você pode gerar uma imagem do QR code, enviar por email, etc.
+  // O QR code também está disponível via getCurrentQrCode()
+}, 'qrcode-handler');
+```
+
 ## 📚 API Completa
 
 ### `BaileysService`
@@ -402,7 +504,51 @@ Remove todos os callbacks de mensagem recebida.
 Remove todos os callbacks de mensagem enviada.
 
 ##### `clearAllCallbacks(): void`
-Remove todos os callbacks (inbound e outbound).
+Remove todos os callbacks (inbound, outbound, QR code, conexão e desconexão).
+
+##### `onQrCode(callback, callbackId?): string`
+Registra callback para quando um QR code for gerado.
+
+- `callback`: Função `(qr: string) => void`
+- `callbackId`: ID opcional
+- Retorna: ID do callback
+
+##### `offQrCode(callbackId: string): boolean`
+Remove callback de QR code.
+
+##### `getCurrentQrCode(): string | null`
+Retorna o QR code atual (se disponível) ou `null`.
+
+##### `onConnect(callback, callbackId?): string`
+Registra callback para quando a conexão for estabelecida.
+
+- `callback`: Função `() => void`
+- `callbackId`: ID opcional
+- Retorna: ID do callback
+
+##### `offConnect(callbackId: string): boolean`
+Remove callback de conexão.
+
+##### `onDisconnect(callback, callbackId?): string`
+Registra callback para quando a conexão for perdida.
+
+- `callback`: Função `(reason?: string) => void`
+  - `reason`: Motivo da desconexão:
+    - `'loggedOut'`: Usuário fez logout
+    - `'error_XXX'`: Erro com código específico
+    - `'manual'`: Desconexão manual
+    - `'unknown'`: Motivo desconhecido
+- `callbackId`: ID opcional
+- Retorna: ID do callback
+
+##### `offDisconnect(callbackId: string): boolean`
+Remove callback de desconexão.
+
+##### `clearConnectCallbacks(): void`
+Remove todos os callbacks de conexão.
+
+##### `clearDisconnectCallbacks(): void`
+Remove todos os callbacks de desconexão.
 
 #### Métodos de Instância
 
@@ -552,6 +698,39 @@ whatsapp.onMessage((message) => {
 await whatsapp.connect();
 ```
 
+### Exemplo 4: Com Callbacks de Conexão e Desconexão
+
+```typescript
+import { BaileysService } from './src/baileys-service.js';
+
+const whatsapp = new BaileysService();
+
+// Callback quando conectar
+whatsapp.onConnect(() => {
+  console.log('✅ Conectado ao WhatsApp!');
+  // Atualizar status no banco de dados, notificar sistemas, etc.
+}, 'connect-handler');
+
+// Callback quando desconectar
+whatsapp.onDisconnect((reason) => {
+  console.log(`❌ Desconectado. Motivo: ${reason}`);
+  
+  if (reason === 'loggedOut') {
+    console.log('⚠️ Faça login novamente');
+  } else if (reason?.startsWith('error_')) {
+    console.log('⚠️ Erro na conexão');
+  }
+}, 'disconnect-handler');
+
+// Callback para QR code
+whatsapp.onQrCode((qr) => {
+  console.log('📱 QR Code gerado');
+  // Gerar imagem, enviar por email, etc.
+}, 'qrcode-handler');
+
+await whatsapp.connect();
+```
+
 ### Executar Exemplos
 
 ```bash
@@ -594,6 +773,10 @@ node dist/run-example.js
 - **Callbacks vs Handlers**: 
   - Callbacks são executados primeiro (úteis para salvar no banco)
   - Handlers são executados depois (úteis para processar a mensagem)
+- **Callbacks de Conexão/Desconexão**: 
+  - `onConnect`: Executado quando a conexão é estabelecida
+  - `onDisconnect`: Executado quando a conexão é perdida (recebe motivo)
+  - Úteis para monitorar estado da conexão e reagir a mudanças
 
 ## 📄 Licença
 
