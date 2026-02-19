@@ -33,9 +33,11 @@ import { rmSync, existsSync } from 'fs';
     messageId?: string;
   }
 
-  export interface InboundMessageData {
+export interface InboundMessageData {
     id: string;
     phoneNumber: string;
+    chatId: string;
+    senderJid: string;
     direction: 'inbound';
     content: string;
     timestamp: Date;
@@ -183,19 +185,24 @@ import { rmSync, existsSync } from 'fs';
             if (!message.key.fromMe && message.message) {
               const messageText = this.extractMessageText(message.message);
               if (messageText) {
+                const chatId = message.key.remoteJid ?? '';
+                const senderJid = this.resolveSenderJid(message.key);
+
                 const whatsappMessage: WhatsAppMessage = {
-                  from: message.key.remoteJid ?? '',
+                  from: chatId,
                   message: messageText,
                   timestamp: new Date(),
                   messageId: message.key.id || undefined,
                 };
 
                 // Executar callbacks de mensagem recebida (inbound)
-                const phoneNumber = whatsappMessage.from.replace('@s.whatsapp.net', '').replace('@c.us', '');
+                const phoneNumber = this.jidToPhoneNumber(senderJid || chatId);
                 const messageId = message.key.id || `msg_${Date.now()}_${Math.random()}`;
                 const inboundData: InboundMessageData = {
                   id: messageId,
                   phoneNumber,
+                  chatId,
+                  senderJid,
                   direction: 'inbound',
                   content: messageText,
                   timestamp: whatsappMessage.timestamp,
@@ -250,7 +257,7 @@ import { rmSync, existsSync } from 'fs';
         console.log(`${instanceLabel}✅ Mensagem enviada com sucesso para ${jid}`);
 
         // Executar callbacks de mensagem enviada (outbound)
-        const phoneNumber = to.replace('@s.whatsapp.net', '').replace('@c.us', '');
+        const phoneNumber = this.jidToPhoneNumber(jid);
         const outboundData: OutboundMessageData = {
           id: result?.key?.id || `msg_${Date.now()}_${Math.random()}`,
           phoneNumber,
@@ -539,6 +546,28 @@ import { rmSync, existsSync } from 'fs';
       if (message.imageMessage?.caption) return message.imageMessage.caption;
       if (message.videoMessage?.caption) return message.videoMessage.caption;
       return null;
+    }
+
+    /**
+     * Resolve o JID real do remetente.
+     * Em grupos, o remoteJid aponta para o grupo e o participante contém o usuário.
+     */
+    private resolveSenderJid(key: any): string {
+      if (key?.participant) return key.participant;
+      if (key?.remoteJid) return key.remoteJid;
+      return '';
+    }
+
+    /**
+     * Remove domínio e metadados extras do JID para obter o número.
+     */
+    private jidToPhoneNumber(jid: string): string {
+      if (!jid) return '';
+
+      const [baseJid] = jid.split('@');
+      if (!baseJid) return '';
+
+      return baseJid.split(':')[0] ?? '';
     }
   }
   

@@ -628,6 +628,8 @@ interface WhatsAppMessage {
 interface InboundMessageData {
   id: string;             // ID da mensagem
   phoneNumber: string;     // Número sem @s.whatsapp.net
+  chatId: string;          // JID da conversa (grupo ou contato)
+  senderJid: string;       // JID real de quem enviou a mensagem
   direction: 'inbound';    // Direção
   content: string;         // Conteúdo
   timestamp: Date;          // Data/hora
