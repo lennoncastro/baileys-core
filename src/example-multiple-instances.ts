@@ -1,4 +1,4 @@
-import { BaileysService, WhatsAppMessage } from './baileys-service.js';
+import { BaileysService, WhatsAppMessage, ConnectOptions } from './baileys-service.js';
 import { join } from 'path';
 import { getAuthDir, appConfig } from './config.js';
 
@@ -133,13 +133,13 @@ export class BaileysServiceManager {
   /**
    * Conectar uma instância específica
    */
-  async connectInstance(instanceId: string): Promise<void> {
+  async connectInstance(instanceId: string, options?: ConnectOptions): Promise<void> {
     const instance = this.instances.get(instanceId);
     if (!instance) {
       throw new Error(`Instância "${instanceId}" não encontrada`);
     }
     
-    await instance.connect();
+    await instance.connect(options);
   }
   
   /**

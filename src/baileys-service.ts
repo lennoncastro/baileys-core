@@ -24,7 +24,14 @@ import { rmSync, existsSync } from 'fs';
   
   const __dirname = getDirname();
   
-  export type WhatsAppConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
+export type WhatsAppConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
+
+export type WhatsAppAuthMethod = 'qr' | 'phone';
+
+export interface ConnectOptions {
+  authMethod?: WhatsAppAuthMethod;
+  phoneNumber?: string;
+}
   
   export interface WhatsAppMessage {
     from: string;
@@ -65,7 +72,9 @@ export interface InboundMessageData {
     private onQrCodeCallbacks: Map<string, (qr: string) => void> = new Map();
     private onDisconnectCallbacks: Map<string, (reason?: string) => void> = new Map();
     private onConnectCallbacks: Map<string, () => void> = new Map();
+    private onPairingCodeCallbacks: Map<string, (pairingCode: string) => void> = new Map();
     private currentQrCode: string | null = null;
+    private currentPairingCode: string | null = null;
   
     constructor(authDir?: string, instanceId?: string) {
       this.authDir = authDir ?? join(__dirname, '../../.whatsapp-auth');
@@ -86,11 +95,20 @@ export interface InboundMessageData {
       this.instanceId = instanceId;
     }
   
-    async connect(): Promise<void> {
+    async connect(options: ConnectOptions = {}): Promise<void> {
       if (this.socket && this.connectionStatus === 'connected') {
         return;
       }
   
+      const authMethod: WhatsAppAuthMethod = options.authMethod ?? 'qr';
+      const normalizedPhoneNumber = options.phoneNumber?.replace(/\D/g, '');
+
+      if (authMethod === 'phone' && !normalizedPhoneNumber) {
+        throw new Error('phoneNumber é obrigatório quando authMethod="phone"');
+      }
+
+      this.currentQrCode = null;
+      this.currentPairingCode = null;
       this.connectionStatus = 'connecting';
   
       try {
@@ -108,6 +126,26 @@ export interface InboundMessageData {
         });
   
         this.socket.ev.on('creds.update', saveCreds);
+
+        if (authMethod === 'phone' && normalizedPhoneNumber && !state.creds.registered) {
+          const pairingCode = await this.socket.requestPairingCode(normalizedPhoneNumber);
+          this.currentPairingCode = pairingCode;
+
+          const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+          console.log(`
+${instanceLabel}🔐 Código de pareamento gerado: ${pairingCode}`);
+          console.log(`${instanceLabel}💡 No WhatsApp: Menu > Aparelhos conectados > Conectar com número
+`);
+
+          this.onPairingCodeCallbacks.forEach((callback) => {
+            try {
+              callback(pairingCode);
+            } catch (error) {
+              const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+              console.error(`${instanceLabel}Erro ao executar callback de pairing code:`, error);
+            }
+          });
+        }
   
         this.socket.ev.on('connection.update', (update: any) => {
           const { connection, lastDisconnect, qr } = update;
@@ -130,6 +168,10 @@ export interface InboundMessageData {
             });
           } else {
             this.currentQrCode = null;
+          }
+
+          if (connection === 'open') {
+            this.currentPairingCode = null;
           }
   
           if (connection === 'close') {
@@ -387,6 +429,7 @@ export interface InboundMessageData {
       this.onInboundMessageCallbacks.clear();
       this.onOutboundMessageCallbacks.clear();
       this.onQrCodeCallbacks.clear();
+      this.onPairingCodeCallbacks.clear();
       this.onDisconnectCallbacks.clear();
       this.onConnectCallbacks.clear();
     }
@@ -486,6 +529,41 @@ export interface InboundMessageData {
     getCurrentQrCode(): string | null {
       return this.currentQrCode;
     }
+
+
+    /**
+     * Obter código de pareamento atual (se disponível)
+     * @returns Código de pareamento atual ou null se não houver
+     */
+    getCurrentPairingCode(): string | null {
+      return this.currentPairingCode;
+    }
+
+    /**
+     * Registrar callback para quando um código de pareamento for gerado
+     */
+    onPairingCode(callback: (pairingCode: string) => void, callbackId?: string): string {
+      const id = callbackId ?? `pairing_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      this.onPairingCodeCallbacks.set(id, callback);
+
+      if (this.currentPairingCode) {
+        try {
+          callback(this.currentPairingCode);
+        } catch (error) {
+          const instanceLabel = this.instanceId ? `[${this.instanceId}] ` : '';
+          console.error(`${instanceLabel}Erro ao executar callback de pairing code:`, error);
+        }
+      }
+
+      return id;
+    }
+
+    /**
+     * Remover callback de código de pareamento
+     */
+    offPairingCode(callbackId: string): boolean {
+      return this.onPairingCodeCallbacks.delete(callbackId);
+    }
   
     getConnectionStatus(): WhatsAppConnectionStatus {
       return this.connectionStatus;
@@ -534,6 +612,7 @@ export interface InboundMessageData {
       
       // Limpar QR code atual
       this.currentQrCode = null;
+      this.currentPairingCode = null;
       
       // Reconectar para gerar novo QR code
       console.log(`${instanceLabel}🔄 Gerando novo QR code...`);

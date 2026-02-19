@@ -2,7 +2,7 @@ import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { BaileysService, WhatsAppMessage, InboundMessageData, OutboundMessageData } from './baileys-service.js';
+import { BaileysService, WhatsAppMessage, InboundMessageData, OutboundMessageData, WhatsAppAuthMethod } from './baileys-service.js';
 import { BaileysServiceManager } from './example-multiple-instances.js';
 import { appConfig } from './config.js';
 
@@ -34,6 +34,7 @@ interface ConnectionStatus {
   status: string;
   handlersCount: number;
   qrCode?: string | null;
+  pairingCode?: string | null;
   lastMessage?: {
     from?: string;
     to?: string;
@@ -79,6 +80,7 @@ class DashboardServer {
         status,
         handlersCount: instance.getMessageHandlerCount(),
         qrCode: instance.getCurrentQrCode(),
+        pairingCode: instance.getCurrentPairingCode(),
       };
 
       // Manter última mensagem se existir
@@ -153,7 +155,7 @@ class DashboardServer {
     // API: Conectar instância
     if (url.pathname.startsWith('/api/instances/') && url.pathname.endsWith('/connect') && req.method === 'POST') {
       const instanceId = url.pathname.split('/')[3];
-      this.handleConnectInstance(instanceId, res);
+      this.handleConnectInstance(instanceId, req, res);
       return;
     }
 
@@ -175,6 +177,13 @@ class DashboardServer {
     if (url.pathname.startsWith('/api/instances/') && url.pathname.endsWith('/qr') && req.method === 'GET') {
       const instanceId = url.pathname.split('/')[3];
       this.handleGetQrCode(instanceId, res);
+      return;
+    }
+
+    // API: Obter código de pareamento
+    if (url.pathname.startsWith('/api/instances/') && url.pathname.endsWith('/pairing-code') && req.method === 'GET') {
+      const instanceId = url.pathname.split('/')[3];
+      this.handleGetPairingCode(instanceId, res);
       return;
     }
 
@@ -276,6 +285,12 @@ class DashboardServer {
           this.broadcastUpdate();
         }, `dashboard-qrcode-${instanceId}`);
 
+        // Configurar callback para código de pareamento
+        instance.onPairingCode((pairingCode) => {
+          this.updatePairingCode(instanceId, pairingCode);
+          this.broadcastUpdate();
+        }, `dashboard-pairing-${instanceId}`);
+
         res.writeHead(201, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, instanceId }));
       } catch (error: any) {
@@ -285,11 +300,33 @@ class DashboardServer {
     });
   }
 
-  private async handleConnectInstance(instanceId: string, res: ServerResponse) {
+  private async handleConnectInstance(instanceId: string, req: IncomingMessage, res: ServerResponse) {
+    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    const authMethod = (url.searchParams.get('authMethod') || 'qr') as WhatsAppAuthMethod;
+    const phoneNumber = url.searchParams.get('phoneNumber') || undefined;
+
+    if (authMethod !== 'qr' && authMethod !== 'phone') {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'authMethod deve ser "qr" ou "phone"' }));
+      return;
+    }
+
+    if (authMethod === 'phone' && !phoneNumber) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'phoneNumber é obrigatório quando authMethod="phone"' }));
+      return;
+    }
+
     try {
-      await this.manager.connectInstance(instanceId);
+      await this.manager.connectInstance(instanceId, { authMethod, phoneNumber });
+      const instance = this.manager.getInstance(instanceId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true }));
+      res.end(JSON.stringify({
+        success: true,
+        authMethod,
+        qrCode: instance?.getCurrentQrCode() || null,
+        pairingCode: instance?.getCurrentPairingCode() || null,
+      }));
     } catch (error: any) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: error.message }));
@@ -357,6 +394,14 @@ class DashboardServer {
     }
   }
 
+  private updatePairingCode(instanceId: string, pairingCode: string | null) {
+    const connection = this.connections.get(instanceId);
+    if (connection) {
+      connection.pairingCode = pairingCode;
+      this.connections.set(instanceId, connection);
+    }
+  }
+
   private handleGetQrCode(instanceId: string, res: ServerResponse) {
     const instance = this.manager.getInstance(instanceId);
     if (!instance) {
@@ -368,6 +413,20 @@ class DashboardServer {
     const qrCode = instance.getCurrentQrCode();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ qrCode }));
+  }
+
+
+  private handleGetPairingCode(instanceId: string, res: ServerResponse) {
+    const instance = this.manager.getInstance(instanceId);
+    if (!instance) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Instância não encontrada' }));
+      return;
+    }
+
+    const pairingCode = instance.getCurrentPairingCode();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ pairingCode }));
   }
 
   private async handleDeleteInstance(instanceId: string, res: ServerResponse) {
