@@ -6,11 +6,13 @@ Serviço para integração com WhatsApp usando Baileys. Permite múltiplas conex
 
 - [Instalação](#instalação)
 - [Uso Básico](#uso-básico)
+- [Autenticação por QR Code ou Número](#autenticação-por-qr-code-ou-número)
 - [Múltiplas Instâncias](#múltiplas-instâncias)
 - [Handlers de Mensagem](#handlers-de-mensagem)
 - [Callbacks de Mensagens](#callbacks-de-mensagens)
 - [Callbacks de Conexão e Desconexão](#callbacks-de-conexão-e-desconexão)
 - [API Completa](#api-completa)
+- [Estudo de Caso](#estudo-de-caso)
 - [Variáveis de Ambiente](#variáveis-de-ambiente)
 - [Exemplos](#exemplos)
 - [Troubleshooting](#troubleshooting)
@@ -45,8 +47,8 @@ import { BaileysService, WhatsAppMessage } from './src/baileys-service.js';
 ```typescript
 const whatsapp = new BaileysService();
 
-// Conectar (irá mostrar QR Code no terminal)
-await whatsapp.connect();
+// Conectar (padrão: fluxo com QR Code)
+await whatsapp.connect({ authMethod: 'qr' });
 
 // Aguardar conexão
 while (whatsapp.getConnectionStatus() !== 'connected') {
@@ -77,6 +79,48 @@ whatsapp.onMessage((message: WhatsAppMessage) => {
 ```typescript
 await whatsapp.disconnect();
 ```
+
+
+## 🔐 Autenticação por QR Code ou Número
+
+A API agora suporta dois modos de autenticação, e quem usa a biblioteca decide o fluxo:
+
+- `authMethod: 'qr'` (padrão): gera QR Code para escanear no app do WhatsApp.
+- `authMethod: 'phone'`: gera código de pareamento usando número de telefone (sem `+`, espaços ou símbolos).
+
+### Fluxo 1: QR Code (mantido)
+
+```typescript
+const whatsapp = new BaileysService();
+
+whatsapp.onQrCode((qr) => {
+  console.log('QR gerado:', qr);
+});
+
+await whatsapp.connect({ authMethod: 'qr' });
+```
+
+### Fluxo 2: Número de telefone (pairing code)
+
+```typescript
+const whatsapp = new BaileysService();
+
+whatsapp.onPairingCode((pairingCode) => {
+  console.log('Código de pareamento:', pairingCode);
+});
+
+await whatsapp.connect({
+  authMethod: 'phone',
+  phoneNumber: '5511999999999',
+});
+```
+
+### Endpoints HTTP (Dashboard Server)
+
+- Conectar por QR: `POST /api/instances/:id/connect?authMethod=qr`
+- Conectar por número: `POST /api/instances/:id/connect?authMethod=phone&phoneNumber=5511999999999`
+- Ler QR atual: `GET /api/instances/:id/qr`
+- Ler pairing code atual: `GET /api/instances/:id/pairing-code`
 
 ## 🔄 Múltiplas Instâncias
 
@@ -471,8 +515,12 @@ constructor(authDir?: string, instanceId?: string)
 
 #### Métodos de Conexão
 
-##### `connect(): Promise<void>`
-Conecta ao WhatsApp. Mostra QR Code no terminal na primeira conexão.
+##### `connect(options?: ConnectOptions): Promise<void>`
+Conecta ao WhatsApp com autenticação configurável (`qr` ou `phone`).
+
+**`ConnectOptions`**
+- `authMethod?: 'qr' | 'phone'` (padrão: `'qr'`)
+- `phoneNumber?: string` (obrigatório quando `authMethod='phone'`)
 
 ##### `disconnect(): Promise<void>`
 Desconecta do WhatsApp.
@@ -571,6 +619,15 @@ Remove callback de QR code.
 
 ##### `getCurrentQrCode(): string | null`
 Retorna o QR code atual (se disponível) ou `null`.
+
+##### `onPairingCode(callback, callbackId?): string`
+Registra callback para quando um código de pareamento for gerado no fluxo por número.
+
+##### `offPairingCode(callbackId: string): boolean`
+Remove callback de código de pareamento.
+
+##### `getCurrentPairingCode(): string | null`
+Retorna o código de pareamento atual (se disponível) ou `null`.
 
 ##### `onConnect(callback, callbackId?): string`
 Registra callback para quando a conexão for estabelecida.
@@ -841,3 +898,7 @@ node dist/run-example.js
 ## 📄 Licença
 
 ISC
+
+## 📘 Estudo de Caso
+
+- [Autenticação QR + Número](./docs/estudo-caso-autenticacao-qr-e-numero.md)
